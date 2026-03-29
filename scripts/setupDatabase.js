@@ -113,6 +113,16 @@ CREATE TABLE IF NOT EXISTS historical_places (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Historical awards table (Marathi-only)
+CREATE TABLE IF NOT EXISTS historical_awards (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    award_name VARCHAR(255) NOT NULL,
+    award_description TEXT,
+    year VARCHAR(10),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Grampanchayat info table (Marathi-only)
 CREATE TABLE IF NOT EXISTS grampanchayat_info (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -136,11 +146,40 @@ CREATE TABLE IF NOT EXISTS announcements (
     file_path TEXT,
     file_url TEXT,
     file_type VARCHAR(50),
-    file_size BIGINT,
+    file_size VARCHAR(50),
     upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    category VARCHAR(100) DEFAULT 'general',
+    category VARCHAR(100) DEFAULT 'इतर',
     is_active BOOLEAN DEFAULT true,
     "order" INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Tax Payment table (Marathi/English details)
+CREATE TABLE IF NOT EXISTS tax_payment (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    qr_file_path TEXT,
+    qr_file_url TEXT,
+    qr_file_type VARCHAR(50),
+    tax_info TEXT,
+    bank_name VARCHAR(255),
+    account_name VARCHAR(255),
+    account_no VARCHAR(255),
+    ifsc_code VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Projects table
+CREATE TABLE IF NOT EXISTS projects (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    type TEXT,
+    description TEXT,
+    cost NUMERIC,
+    start_date DATE,
+    end_date DATE,
+    status TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -158,6 +197,7 @@ CREATE INDEX IF NOT EXISTS idx_hero_images_order ON hero_images("order");
 CREATE INDEX IF NOT EXISTS idx_hero_images_active ON hero_images(is_active);
 CREATE INDEX IF NOT EXISTS idx_announcements_active ON announcements(is_active);
 CREATE INDEX IF NOT EXISTS idx_announcements_order ON announcements("order");
+CREATE INDEX IF NOT EXISTS idx_tax_payment_id ON tax_payment(id);
 
 -- Create updated_at trigger function
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -178,8 +218,11 @@ DROP TRIGGER IF EXISTS update_hero_images_updated_at ON hero_images;
 DROP TRIGGER IF EXISTS update_infrastructure_updated_at ON infrastructure;
 DROP TRIGGER IF EXISTS update_historical_events_updated_at ON historical_events;
 DROP TRIGGER IF EXISTS update_historical_places_updated_at ON historical_places;
+DROP TRIGGER IF EXISTS update_historical_awards_updated_at ON historical_awards;
 DROP TRIGGER IF EXISTS update_grampanchayat_info_updated_at ON grampanchayat_info;
 DROP TRIGGER IF EXISTS update_announcements_updated_at ON announcements;
+DROP TRIGGER IF EXISTS update_tax_payment_updated_at ON tax_payment;
+DROP TRIGGER IF EXISTS update_projects_updated_at ON projects;
 
 -- Create triggers for updated_at
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -191,8 +234,11 @@ CREATE TRIGGER update_hero_images_updated_at BEFORE UPDATE ON hero_images FOR EA
 CREATE TRIGGER update_infrastructure_updated_at BEFORE UPDATE ON infrastructure FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_historical_events_updated_at BEFORE UPDATE ON historical_events FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_historical_places_updated_at BEFORE UPDATE ON historical_places FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_historical_awards_updated_at BEFORE UPDATE ON historical_awards FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_grampanchayat_info_updated_at BEFORE UPDATE ON grampanchayat_info FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_announcements_updated_at BEFORE UPDATE ON announcements FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_tax_payment_updated_at BEFORE UPDATE ON tax_payment FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_projects_updated_at BEFORE UPDATE ON projects FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Enable Row Level Security (RLS)
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
@@ -204,8 +250,11 @@ ALTER TABLE hero_images ENABLE ROW LEVEL SECURITY;
 ALTER TABLE infrastructure ENABLE ROW LEVEL SECURITY;
 ALTER TABLE historical_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE historical_places ENABLE ROW LEVEL SECURITY;
+ALTER TABLE historical_awards ENABLE ROW LEVEL SECURITY;
 ALTER TABLE grampanchayat_info ENABLE ROW LEVEL SECURITY;
 ALTER TABLE announcements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tax_payment ENABLE ROW LEVEL SECURITY;
+ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
 
 -- Drop existing policies if they exist
 DROP POLICY IF EXISTS "Public read access" ON representatives;
@@ -215,8 +264,11 @@ DROP POLICY IF EXISTS "Public read access" ON hero_images;
 DROP POLICY IF EXISTS "Public read access" ON infrastructure;
 DROP POLICY IF EXISTS "Public read access" ON historical_events;
 DROP POLICY IF EXISTS "Public read access" ON historical_places;
+DROP POLICY IF EXISTS "Public read access" ON historical_awards;
 DROP POLICY IF EXISTS "Public read access" ON grampanchayat_info;
 DROP POLICY IF EXISTS "Public read access" ON announcements;
+DROP POLICY IF EXISTS "Public read access" ON tax_payment;
+DROP POLICY IF EXISTS "Public read access" ON projects;
 
 -- Create policies for public read access (for website)
 CREATE POLICY "Public read access" ON representatives FOR SELECT USING (true);
@@ -226,8 +278,11 @@ CREATE POLICY "Public read access" ON hero_images FOR SELECT USING (is_active = 
 CREATE POLICY "Public read access" ON infrastructure FOR SELECT USING (true);
 CREATE POLICY "Public read access" ON historical_events FOR SELECT USING (true);
 CREATE POLICY "Public read access" ON historical_places FOR SELECT USING (true);
+CREATE POLICY "Public read access" ON historical_awards FOR SELECT USING (true);
 CREATE POLICY "Public read access" ON grampanchayat_info FOR SELECT USING (true);
 CREATE POLICY "Public read access" ON announcements FOR SELECT USING (is_active = true);
+CREATE POLICY "Public read access" ON tax_payment FOR SELECT USING (true);
+CREATE POLICY "Public read access" ON projects FOR SELECT USING (true);
 `;
 
 async function setupDatabase() {
@@ -252,13 +307,12 @@ async function setupDatabase() {
     `);
 
     const existingTables = tablesCheck.rows.map((r) => r.table_name);
-    const hasAllTables = existingTables.length === 11;
+    const hasAllTables = existingTables.length >= 13;
+    const hasProjectsTable = existingTables.includes("projects");
 
-    if (hasAllTables) {
-      console.log(
-        "ℹ️  Database tables already exist, skipping schema creation"
-      );
-      console.log(`📊 Existing tables: ${existingTables.length}`);
+    if (hasAllTables && hasProjectsTable && existingTables.includes("tax_payment")) {
+      console.log("ℹ️  Database tables already exist, skipping schema creation");
+      console.log("📊 Existing tables count: " + existingTables.length);
     } else {
       // Only create schema if tables don't exist or are incomplete
       console.log("📋 Creating tables and indexes...");
@@ -284,8 +338,8 @@ async function setupDatabase() {
         "INSERT INTO users (email, password, role, permissions, is_active) VALUES ($1, $2, $3, $4, $5)",
         [adminEmail, hashedPassword, "admin", JSON.stringify(["*"]), true]
       );
-      console.log(`✅ Admin user created: ${adminEmail}`);
-      console.log(`🔑 Password: ${adminPassword}`);
+      console.log("✅ Admin user created: " + adminEmail);
+      console.log("🔑 Password: " + adminPassword);
       console.log("⚠️  IMPORTANT: Change this password after first login!");
     } else {
       console.log("ℹ️  Admin user already exists");
@@ -307,13 +361,12 @@ async function setupDatabase() {
     `);
 
     console.log("\n✅ Database setup complete!");
-    console.log(`📊 Tables created: ${tables.rows.length}`);
-    console.log("📋 Tables:", tables.rows.map((r) => r.table_name).join(", "));
+    console.log("📊 Tables created: " + tables.rows.length);
+    console.log("📋 Tables: " + tables.rows.map((r) => r.table_name).join(", "));
 
     return true;
   } catch (error) {
-    console.error("❌ Database setup failed:", error.message);
-    console.error("❌ Full error:", error);
+    console.error("❌ Database setup failed: " + error.message);
     throw error;
   } finally {
     await pool.end();

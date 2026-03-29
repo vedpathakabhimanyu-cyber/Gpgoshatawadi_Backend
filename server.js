@@ -7,19 +7,49 @@ require("dotenv").config();
 
 const app = express();
 
-// Middleware
-app.use(helmet());
-app.use(compression());
-app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
+// 1. CORS Middleware FIRST
+const allowedOrigins = process.env.CORS_ORIGINS 
+  ? process.env.CORS_ORIGINS.split(",").map(origin => origin.trim()) 
+  : [];
+
 app.use(
   cors({
-    origin: process.env.CORS_ORIGINS?.split(",") || [
-      "http://localhost:3000",
-      "http://localhost:3001",
-    ],
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      
+      const isAllowed = 
+        allowedOrigins.indexOf(origin) !== -1 || 
+        allowedOrigins.includes("*") ||
+        origin.endsWith(".gpkarvat.in") ||
+        origin.endsWith(".gpkahir.in") ||
+        /^http:\/\/localhost:\d+$/.test(origin); // Dynamic: Allow any localhost port in dev
+                       
+      if (isAllowed) {
+        callback(null, true);
+      } else {
+        console.warn(`CORS blocked for origin: ${origin}`);
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "Accept", "X-Requested-With", "X-Custom-Header"],
+    exposedHeaders: ["Content-Range", "X-Content-Range"],
+    optionsSuccessStatus: 200,
   })
 );
+
+// 2. Helmet and other middleware
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    contentSecurityPolicy: false, // Disable CSP for now to avoid issues, or configure properly
+  })
+);
+app.use(compression());
+app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
+
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
@@ -87,6 +117,8 @@ const historicalRoutes = require("./routes/historical");
 const grampanchayatRoutes = require("./routes/grampanchayat");
 const websiteDataRoutes = require("./routes/websiteData");
 const announcementsRoutes = require("./routes/announcements");
+const taxPaymentRoutes = require("./routes/taxPayment");
+const projectsRoutes = require("./routes/projects");
 
 // API Routes
 app.use("/api/auth", authRoutes);
@@ -101,6 +133,8 @@ app.use("/api/historical", historicalRoutes);
 app.use("/api/grampanchayat", grampanchayatRoutes);
 app.use("/api/website", websiteDataRoutes);
 app.use("/api/announcements", announcementsRoutes);
+app.use("/api/tax-payment", taxPaymentRoutes);
+app.use("/api/projects", projectsRoutes);
 
 // Health Check
 app.get("/", (req, res) => {
@@ -115,6 +149,7 @@ app.get("/", (req, res) => {
       certificates: "/api/certificates",
       images: "/api/images",
       announcements: "/api/announcements",
+      projects: "/api/projects",
     },
   });
 });
